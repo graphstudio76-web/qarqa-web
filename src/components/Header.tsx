@@ -8,6 +8,7 @@ const links = [
   { href: "/diagnose", label: "تشخیص" },
   { href: "/packages", label: "بسته‌ها" },
   { href: "/flight", label: "مسیر پرواز" },
+  { href: "/panel", label: "پنل" },
 ];
 
 export function Header() {

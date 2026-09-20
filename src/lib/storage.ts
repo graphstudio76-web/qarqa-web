@@ -46,6 +46,16 @@ export function saveJourney(partial: Partial<JourneyState>): JourneyState {
   return next;
 }
 
+/** Ensure localStorage write is flushed before navigation. */
+export function flushStorage(): void {
+  try {
+    // Touch a noop read so some browsers settle the write
+    void localStorage.getItem(KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function clearJourney(): void {
   localStorage.removeItem(KEY);
 }

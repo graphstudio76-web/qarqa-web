@@ -61,7 +61,7 @@ function PackagesInner() {
       recommendedPackageId:
         loadJourney().recommendedPackageId ?? recommend ?? pkg.id,
     });
-    router.push(`/payment?package=${pkg.id}&amount=${amount}`);
+    router.push(`/payment?package=${pkg.id}&amount=${amount}&project=mouri`);
   }
 
   return (

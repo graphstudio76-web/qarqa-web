@@ -16,6 +16,14 @@ Persian-first game-like branding journey for **قارقا (Qarqa)**.
 
 وسط مسیر قیمت ویژه‌ی محدود را می‌پذیرد، پرداخت آزمایشی می‌کند، و بقیه‌ی مراحل باز می‌شوند. وقتی پرومو تمام شود فقط قیمت اصلی نمایش داده می‌شود.
 
+### پنل پروژه‌ها (فاز ۱)
+
+- `/panel` — داشبورد بنیان‌گذار؛ شروع/ادامه موری و پایلوت آزمایشی
+- `/panel/projects/[id]` — فضای کار مرحله‌ای با چک‌لیست و یادداشت
+- پروژه‌ها در `localStorage` با کلید `qarqa-projects-v1` (`src/lib/projects.ts`)
+
+بعد از پرداخت آزمایشی کاربر به `/panel/projects/mouri` هدایت می‌شود.
+
 ### اجرا
 
 ```bash
@@ -24,7 +32,7 @@ npm install
 npm run dev
 ```
 
-ساخت production:
+ساخت production (webpack):
 
 ```bash
 npm run build

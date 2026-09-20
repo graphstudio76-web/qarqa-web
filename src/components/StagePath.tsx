@@ -3,24 +3,38 @@
 import { STAGES, type StageId } from "@/lib/stages";
 
 type Props = {
-  unlocked: string[];
+  unlocked?: string[];
   current?: string;
-  paid: boolean;
+  paid?: boolean;
+  /** When provided, uses per-stage status instead of unlocked/paid heuristics */
+  stageStatus?: Record<string, "locked" | "open" | "done">;
+  onSelect?: (id: StageId) => void;
 };
 
-export function StagePath({ unlocked, current, paid }: Props) {
+export function StagePath({
+  unlocked = [],
+  current,
+  paid = false,
+  stageStatus,
+  onSelect,
+}: Props) {
   return (
     <ol className="relative space-y-0">
       {STAGES.map((stage, i) => {
-        const isUnlocked =
-          unlocked.includes(stage.id) ||
-          (!stage.requiresPayment && unlocked.length > 0) ||
-          (paid && stage.requiresPayment);
+        const status = stageStatus?.[stage.id];
+        const locked = status
+          ? status === "locked"
+          : stage.requiresPayment &&
+            !paid &&
+            !unlocked.includes(stage.id);
+        const isDone = status === "done";
+        const isUnlocked = status
+          ? status !== "locked"
+          : unlocked.includes(stage.id) ||
+            (!stage.requiresPayment && unlocked.length > 0) ||
+            (paid && stage.requiresPayment);
         const active = current === stage.id;
-        const locked =
-          stage.requiresPayment &&
-          !paid &&
-          !unlocked.includes(stage.id);
+        const clickable = Boolean(onSelect) && !locked;
 
         return (
           <li key={stage.id} className="relative flex gap-4 pb-8 last:pb-0">
@@ -34,7 +48,30 @@ export function StagePath({ unlocked, current, paid }: Props) {
                 aria-hidden
               />
             )}
-            <div className="min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <div
+              className={`min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.03] p-4 transition ${
+                clickable
+                  ? "cursor-pointer hover:border-violet-400/40 hover:bg-white/[0.06]"
+                  : ""
+              } ${active ? "ring-1 ring-violet-400/40" : ""}`}
+              role={clickable ? "button" : undefined}
+              tabIndex={clickable ? 0 : undefined}
+              onClick={
+                clickable
+                  ? () => onSelect?.(stage.id)
+                  : undefined
+              }
+              onKeyDown={
+                clickable
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onSelect?.(stage.id);
+                      }
+                    }
+                  : undefined
+              }
+            >
               <div className="mb-1 flex flex-wrap items-center gap-2">
                 <span className="text-xs text-white/40">
                   مرحله {stage.order}
@@ -49,7 +86,12 @@ export function StagePath({ unlocked, current, paid }: Props) {
                     قفل — بعد از پرداخت
                   </span>
                 )}
-                {isUnlocked && !locked && !active && (
+                {isDone && !active && (
+                  <span className="rounded-full bg-emerald-500/25 px-2 py-0.5 text-[10px] text-emerald-300">
+                    انجام شد
+                  </span>
+                )}
+                {isUnlocked && !locked && !active && !isDone && (
                   <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-300">
                     باز
                   </span>
@@ -76,10 +118,12 @@ export function StagePath({ unlocked, current, paid }: Props) {
                   ? "border-white/15 bg-black text-white/30"
                   : active
                     ? "border-transparent bg-gradient-to-br from-cyan-400 via-violet-500 to-emerald-500 text-black shadow-[0_0_20px_rgba(139,92,246,0.5)]"
-                    : "border-violet-400/50 bg-black text-violet-200"
+                    : isDone
+                      ? "border-emerald-400/60 bg-emerald-950/50 text-emerald-300"
+                      : "border-violet-400/50 bg-black text-violet-200"
               }`}
             >
-              {locked ? "🔒" : stage.order}
+              {locked ? "🔒" : isDone ? "✓" : stage.order}
             </div>
           </li>
         );

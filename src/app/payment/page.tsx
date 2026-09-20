@@ -8,8 +8,9 @@ import {
   getPackageById,
   getPayableAmount,
 } from "@/lib/pricing";
+import { MOURI_ID, unlockAfterPayment } from "@/lib/projects";
 import { STAGES } from "@/lib/stages";
-import { saveJourney } from "@/lib/storage";
+import { flushStorage, saveJourney } from "@/lib/storage";
 
 /**
  * Mock payment UI — interface shaped for future Zarinpal / IDPay adapters.
@@ -19,6 +20,7 @@ function PaymentInner() {
   const router = useRouter();
   const search = useSearchParams();
   const packageId = search.get("package") ?? "build-standard";
+  const projectId = search.get("project") ?? MOURI_ID;
   const pkg = getPackageById(packageId);
   const amountParam = search.get("amount");
   const amount = useMemo(() => {
@@ -48,25 +50,63 @@ function PaymentInner() {
   async function mockPay(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !phone.trim()) {
-      setError("نام و موبایل را وارد کن.");
+      setError("نام و موبایل را وارد کن — هر دو فیلد اجباری‌اند.");
       return;
     }
     setBusy(true);
     setError("");
-    // Simulate gateway latency
-    await new Promise((r) => setTimeout(r, 900));
-    const unlocked = STAGES.map((s) => s.id);
-    saveJourney({
-      selectedPackageId: packageId,
-      paid: true,
-      paidAt: new Date().toISOString(),
-      paidAmount: amount,
-      paidPackageName: pkg!.nameFa,
-      unlockedStages: unlocked,
-      currentStageId: "flock",
-    });
-    setBusy(false);
-    router.push("/flight?unlocked=1");
+    try {
+      // Simulate gateway latency
+      await new Promise((r) => setTimeout(r, 700));
+
+      const unlocked = STAGES.map((s) => s.id);
+      const paidAt = new Date().toISOString();
+
+      // 1) Journey first
+      saveJourney({
+        selectedPackageId: packageId,
+        paid: true,
+        paidAt,
+        paidAmount: amount,
+        paidPackageName: pkg!.nameFa,
+        unlockedStages: unlocked,
+        currentStageId: "flock",
+      });
+
+      // 2) Project (creates Mouri if needed)
+      unlockAfterPayment({
+        projectId,
+        packageId,
+        paidAmount: amount,
+        paidPackageName: pkg!.nameFa,
+      });
+
+      // 3) Ensure writes settle before navigate
+      flushStorage();
+      await new Promise((r) => setTimeout(r, 50));
+
+      const dest = `/panel/projects/${projectId}?paid=1`;
+      try {
+        router.replace(dest);
+        // Fallback if client nav stalls
+        setTimeout(() => {
+          if (
+            typeof window !== "undefined" &&
+            !window.location.pathname.includes(`/panel/projects/${projectId}`)
+          ) {
+            window.location.assign(dest);
+          }
+        }, 400);
+      } catch {
+        if (typeof window !== "undefined") {
+          window.location.assign(dest);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      setError("خطا در ثبت پرداخت. دوباره تلاش کن.");
+      setBusy(false);
+    }
   }
 
   return (
@@ -75,7 +115,7 @@ function PaymentInner() {
         <p className="mb-1 text-sm text-violet-300/80">پرداخت</p>
         <h1 className="text-3xl font-black text-bone">تأیید و پرداخت</h1>
         <p className="mt-2 text-sm text-white/55">
-          در فاز ۱ پرداخت آزمایشی است. رابط برای زرین‌پال و آیدی‌پی آماده است.
+          در فاز ۱ پرداخت آزمایشی است. بعد از موفقیت مستقیم به پنل پروژه می‌روی.
         </p>
       </div>
 
@@ -85,6 +125,12 @@ function PaymentInner() {
           <span className="font-bold text-bone">{pkg.nameFa}</span>
         </div>
         <div className="flex justify-between text-sm">
+          <span className="text-white/50">پروژه</span>
+          <span className="font-bold text-bone">
+            {projectId === MOURI_ID ? "موری / Mouri" : projectId}
+          </span>
+        </div>
+        <div className="flex justify-between text-sm">
           <span className="text-white/50">مبلغ</span>
           <span className="text-lg font-bold text-iridescent">
             {formatToman(amount)}
@@ -92,25 +138,41 @@ function PaymentInner() {
         </div>
       </div>
 
-      <form onSubmit={mockPay} className="space-y-5">
+      <form onSubmit={mockPay} className="space-y-5" noValidate>
         <label className="block space-y-2">
-          <span className="text-sm text-white/70">نام</span>
+          <span className="text-sm text-white/70">
+            نام <span className="text-rose-400">*</span>
+          </span>
           <input
-            className="input-field"
+            className={`input-field ${
+              error && !name.trim() ? "border-rose-500/70 ring-1 ring-rose-500/40" : ""
+            }`}
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              if (error) setError("");
+            }}
             placeholder="نام و نام خانوادگی"
+            autoComplete="name"
           />
         </label>
         <label className="block space-y-2">
-          <span className="text-sm text-white/70">موبایل</span>
+          <span className="text-sm text-white/70">
+            موبایل <span className="text-rose-400">*</span>
+          </span>
           <input
-            className="input-field"
+            className={`input-field ${
+              error && !phone.trim() ? "border-rose-500/70 ring-1 ring-rose-500/40" : ""
+            }`}
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => {
+              setPhone(e.target.value);
+              if (error) setError("");
+            }}
             placeholder="09xxxxxxxxx"
             inputMode="tel"
             dir="ltr"
+            autoComplete="tel"
           />
         </label>
 
@@ -149,16 +211,19 @@ function PaymentInner() {
         </fieldset>
 
         {error && (
-          <p className="text-sm text-rose-400" role="alert">
+          <div
+            className="rounded-xl border border-rose-500/50 bg-rose-950/50 px-4 py-3 text-sm font-medium text-rose-200"
+            role="alert"
+          >
             {error}
-          </p>
+          </div>
         )}
 
         <button type="submit" className="btn-primary w-full" disabled={busy}>
-          {busy ? "در حال اتصال به درگاه…" : "پرداخت آزمایشی و باز کردن مسیر"}
+          {busy ? "در حال اتصال به درگاه…" : "پرداخت آزمایشی و باز کردن پنل"}
         </button>
         <p className="text-center text-[11px] text-white/35">
-          هیچ مبلغ واقعی کسر نمی‌شود. localStorage وضعیت را نگه می‌دارد.
+          هیچ مبلغ واقعی کسر نمی‌شود. بعد از موفقیت به پنل پروژه هدایت می‌شوی.
         </p>
       </form>
 
